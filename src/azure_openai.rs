@@ -6,7 +6,7 @@
 
 use crate::error::ResponseError;
 use crate::keychain::AzureCredentials;
-use crate::response::PolishConfig;
+use crate::response::{language_code_to_name, PolishConfig};
 use anyhow::Context;
 use serde::{Deserialize, Serialize};
 use std::time::Duration;
@@ -73,15 +73,17 @@ struct ContentItem {
     text: String,
 }
 
-/// System prompt for basic transcript polishing.
-const POLISH_PROMPT: &str = r#"You are an expert copy editor. Your task is to polish and copyedit the following transcript for improved readability and grammar while preserving the original meaning and tone. Fix any obvious transcription errors, improve punctuation, and ensure proper sentence structure. Do not add new content or change the meaning. Preserve the original language of the transcript - do not translate it.
+/// System prompt template for basic transcript polishing.
+/// Use `{language}` placeholder for the target language.
+const POLISH_PROMPT_TEMPLATE: &str = r#"You are an expert copy editor. Your task is to polish and copyedit the following transcript for improved readability and grammar while preserving the original meaning and tone. Fix any obvious transcription errors, improve punctuation, and ensure proper sentence structure. Do not add new content or change the meaning. The output MUST be in {language}. Do not translate to any other language.
 
 IMPORTANT: The transcript may contain screenshot references in markdown image format like `![Screenshot](screenshots/filename.png)`. These must be preserved exactly as they appear, in their original positions within the transcript. Do not modify, remove, or relocate these screenshot references.
 
 Return only the polished transcript without any additional commentary."#;
 
-/// System prompt for live meeting recording.
-const LIVE_MEETING_PROMPT: &str = r#"You are an expert meeting assistant. Your task is to analyze the following meeting transcript and generate a comprehensive, well-structured output. Preserve the original language of the transcript - do not translate it. All output sections should be in the same language as the transcript.
+/// System prompt template for live meeting recording.
+/// Use `{language}` placeholder for the target language.
+const LIVE_MEETING_PROMPT_TEMPLATE: &str = r#"You are an expert meeting assistant. Your task is to analyze the following meeting transcript and generate a comprehensive, well-structured output. The output MUST be in {language}. Do not translate to any other language.
 
 Extract and organize the key information into the following sections:
 
@@ -111,12 +113,14 @@ If a section has no relevant content from the transcript, write "None identified
 
 Return the output in the format above with the section headers as shown."#;
 
-/// Select the appropriate prompt based on config
-fn select_prompt(config: &PolishConfig) -> &'static str {
-    match config.prompt_type.as_deref() {
-        Some("live_meeting") => LIVE_MEETING_PROMPT,
-        _ => POLISH_PROMPT,
-    }
+/// Select the appropriate prompt based on config, with language injected
+fn select_prompt(config: &PolishConfig) -> String {
+    let language = language_code_to_name(&config.language_code);
+    let template = match config.prompt_type.as_deref() {
+        Some("live_meeting") => LIVE_MEETING_PROMPT_TEMPLATE,
+        _ => POLISH_PROMPT_TEMPLATE,
+    };
+    template.replace("{language}", language)
 }
 
 impl AzureOpenAIClient {
@@ -160,7 +164,7 @@ impl AzureOpenAIClient {
             input: vec![
                 Message {
                     role: "developer".to_string(),
-                    content: prompt.to_string(),
+                    content: prompt,
                 },
                 Message {
                     role: "user".to_string(),
@@ -354,5 +358,29 @@ mod tests {
             serde_json::from_str(json).expect("Failed to deserialize");
         let text = AzureOpenAIClient::extract_text(&response).expect("Failed to extract text");
         assert_eq!(text, "Polished text here");
+    }
+
+    #[test]
+    fn test_select_prompt_injects_language() {
+        let config = PolishConfig {
+            reasoning_effort: None,
+            prompt_type: None,
+            language_code: "en".to_string(),
+        };
+        let prompt = select_prompt(&config);
+        assert!(prompt.contains("The output MUST be in English"));
+        assert!(!prompt.contains("{language}"));
+    }
+
+    #[test]
+    fn test_select_prompt_live_meeting_injects_language() {
+        let config = PolishConfig {
+            reasoning_effort: None,
+            prompt_type: Some("live_meeting".to_string()),
+            language_code: "no".to_string(),
+        };
+        let prompt = select_prompt(&config);
+        assert!(prompt.contains("The output MUST be in Norwegian"));
+        assert!(prompt.contains("## Summary"));
     }
 }
