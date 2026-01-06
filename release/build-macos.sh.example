@@ -1,0 +1,198 @@
+#!/bin/bash
+set -e
+
+# Build script for Vissper macOS DMG installer
+# Usage: ./release/build-macos.sh [--notarize] [--clean-keychain]
+#
+# Options:
+#   --notarize       Submit DMG to Apple for notarization and staple the ticket
+#                    Requires: xcrun notarytool store-credentials "notarytool-profile"
+#   --clean-keychain Delete existing auth session from keychain before build
+#                    Useful to avoid keychain prompts when code signature changes
+#
+# Required environment variables:
+#   CODESIGN_IDENTITY  Your Developer ID Application identity
+#                      Example: export CODESIGN_IDENTITY="Developer ID Application: Your Name (TEAM_ID)"
+#
+# Optional environment variables:
+#   DMG_DEST_DIR       Directory to copy final DMG after notarization (optional)
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+APP_NAME="Vissper"
+BINARY_NAME="vissper"
+
+# Code signing identity (set via environment variable)
+SIGN_IDENTITY="${CODESIGN_IDENTITY:-}"
+
+if [ -z "$SIGN_IDENTITY" ]; then
+    echo "Error: CODESIGN_IDENTITY environment variable not set"
+    echo "Please set it to your Developer ID Application identity, e.g.:"
+    echo "  export CODESIGN_IDENTITY=\"Developer ID Application: Your Name (TEAM_ID)\""
+    exit 1
+fi
+
+ENTITLEMENTS="$PROJECT_ROOT/resources/configs/entitlements.plist"
+NOTARYTOOL_PROFILE="notarytool-profile"
+
+# Parse arguments
+NOTARIZE=false
+CLEAN_KEYCHAIN=false
+for arg in "$@"; do
+    case $arg in
+        --notarize)
+            NOTARIZE=true
+            shift
+            ;;
+        --clean-keychain)
+            CLEAN_KEYCHAIN=true
+            shift
+            ;;
+    esac
+done
+
+# Clean keychain if requested
+if [ "$CLEAN_KEYCHAIN" = true ]; then
+    echo "Cleaning existing auth session from keychain..."
+    security delete-generic-password -s "com.vissper.desktop" -a "auth_session" 2>/dev/null || true
+    echo "Keychain cleaned (you will need to sign in again)"
+fi
+
+# Extract version from Cargo.toml
+VERSION=$(grep '^version = ' "$PROJECT_ROOT/Cargo.toml" | head -1 | sed 's/version = "\(.*\)"/\1/')
+echo "Building $APP_NAME version $VERSION"
+
+# Paths
+BUILD_DIR="$PROJECT_ROOT/target/release"
+APP_BUNDLE="$BUILD_DIR/$APP_NAME.app"
+DMG_NAME="vissper-$VERSION.dmg"
+DMG_PATH="$SCRIPT_DIR/$DMG_NAME"
+
+# Clean previous build artifacts
+rm -rf "$APP_BUNDLE"
+rm -f "$DMG_PATH"
+
+# Build release binary
+echo "Building release binary..."
+cd "$PROJECT_ROOT"
+cargo build --release
+
+# Verify binary exists
+if [ ! -f "$BUILD_DIR/$BINARY_NAME" ]; then
+    echo "Error: Binary not found at $BUILD_DIR/$BINARY_NAME"
+    exit 1
+fi
+
+# Create .app bundle structure
+echo "Creating app bundle..."
+mkdir -p "$APP_BUNDLE/Contents/MacOS"
+mkdir -p "$APP_BUNDLE/Contents/Resources"
+
+# Copy binary
+cp "$BUILD_DIR/$BINARY_NAME" "$APP_BUNDLE/Contents/MacOS/"
+
+# Copy Info.plist
+cp "$PROJECT_ROOT/resources/configs/Info.plist" "$APP_BUNDLE/Contents/"
+
+# Copy icon if it exists
+if [ -f "$PROJECT_ROOT/assets/icon.icns" ]; then
+    cp "$PROJECT_ROOT/assets/icon.icns" "$APP_BUNDLE/Contents/Resources/AppIcon.icns"
+    echo "Icon copied"
+else
+    echo "Warning: No icon.icns found in assets/, skipping icon"
+fi
+
+# Create PkgInfo
+echo -n "APPL????" > "$APP_BUNDLE/Contents/PkgInfo"
+
+echo "App bundle created at $APP_BUNDLE"
+
+# Code sign the app bundle
+echo "Code signing app bundle..."
+codesign --sign "$SIGN_IDENTITY" \
+    --entitlements "$ENTITLEMENTS" \
+    --options runtime \
+    --force \
+    --timestamp \
+    --deep \
+    "$APP_BUNDLE"
+
+# Verify signature
+echo "Verifying signature..."
+codesign --verify --deep --strict --verbose=2 "$APP_BUNDLE"
+echo "Code signing complete"
+
+# Create DMG
+echo "Creating DMG..."
+TEMP_DMG="$BUILD_DIR/temp.dmg"
+MOUNT_POINT="/Volumes/$APP_NAME"
+
+# Clean up any existing mount
+if [ -d "$MOUNT_POINT" ]; then
+    hdiutil detach "$MOUNT_POINT" -quiet || true
+fi
+
+# Create temporary DMG
+hdiutil create -size 200m -fs HFS+ -volname "$APP_NAME" "$TEMP_DMG" -ov
+
+# Mount it
+hdiutil attach "$TEMP_DMG" -mountpoint "$MOUNT_POINT"
+
+# Copy app bundle
+cp -R "$APP_BUNDLE" "$MOUNT_POINT/"
+
+# Create Applications symlink
+ln -s /Applications "$MOUNT_POINT/Applications"
+
+# Unmount
+hdiutil detach "$MOUNT_POINT"
+
+# Convert to compressed DMG
+hdiutil convert "$TEMP_DMG" -format UDZO -o "$DMG_PATH"
+
+# Clean up
+rm -f "$TEMP_DMG"
+
+# Sign the DMG
+echo "Signing DMG..."
+codesign --sign "$SIGN_IDENTITY" --timestamp "$DMG_PATH"
+
+echo ""
+echo "========================================="
+echo "Build complete!"
+echo "DMG: $DMG_PATH"
+echo "========================================="
+
+if [ "$NOTARIZE" = true ]; then
+    echo ""
+    echo "Submitting to Apple for notarization..."
+    xcrun notarytool submit "$DMG_PATH" --keychain-profile "$NOTARYTOOL_PROFILE" --wait
+
+    echo ""
+    echo "Stapling notarization ticket..."
+    xcrun stapler staple "$DMG_PATH"
+
+    echo ""
+    echo "========================================="
+    echo "Notarization complete!"
+    echo "DMG is ready for distribution: $DMG_PATH"
+    echo "========================================="
+
+    # Copy to destination folder if configured
+    DEST_DIR="${DMG_DEST_DIR:-}"
+    if [ -n "$DEST_DIR" ] && [ -d "$DEST_DIR" ]; then
+        cp "$DMG_PATH" "$DEST_DIR/"
+        echo ""
+        echo "Copied to: $DEST_DIR/$DMG_NAME"
+    fi
+else
+    echo ""
+    echo "App is signed with Developer ID."
+    echo ""
+    echo "To notarize for distribution, run:"
+    echo "  ./release/build-macos.sh --notarize"
+    echo ""
+    echo "Or manually:"
+    echo "  xcrun notarytool submit \"$DMG_PATH\" --keychain-profile \"$NOTARYTOOL_PROFILE\" --wait"
+    echo "  xcrun stapler staple \"$DMG_PATH\""
+fi

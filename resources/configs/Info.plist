@@ -1,0 +1,44 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+    <!-- App Identity -->
+    <key>CFBundleIdentifier</key>
+    <string>com.vissper.desktop</string>
+    
+    <key>CFBundleName</key>
+    <string>Vissper</string>
+    
+    <key>CFBundleDisplayName</key>
+    <string>Vissper</string>
+    
+    <key>CFBundleVersion</key>
+    <string>0.3.0</string>
+
+    <key>CFBundleShortVersionString</key>
+    <string>0.3.0</string>
+    
+    <key>CFBundleExecutable</key>
+    <string>vissper</string>
+    
+    <key>CFBundlePackageType</key>
+    <string>APPL</string>
+    
+    <!-- Microphone Permission -->
+    <key>NSMicrophoneUsageDescription</key>
+    <string>Vissper needs microphone access to transcribe your meetings in real-time.</string>
+
+    <!-- Screen Recording Permission -->
+    <key>NSScreenCaptureUsageDescription</key>
+    <string>Vissper needs screen recording access to capture screenshots during your meetings.</string>
+    
+    <!-- Menu Bar App -->
+    <key>LSUIElement</key>
+    <false/>
+    
+    <!-- High Resolution Support -->
+    <key>NSHighResolutionCapable</key>
+    <true/>
+</dict>
+</plist>
+

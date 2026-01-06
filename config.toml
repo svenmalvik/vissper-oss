@@ -1,0 +1,6 @@
+# Vissper OSS Configuration
+# Minimal configuration for the open-source version
+
+[version_check]
+url = "https://vissper.com/version.json"
+enabled = true
