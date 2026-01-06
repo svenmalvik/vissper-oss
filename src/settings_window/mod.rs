@@ -255,8 +255,7 @@ impl SettingsWindow {
         let sep4 = controls::create_separator(mtm, 55.0, WINDOW_WIDTH - 40.0);
         unsafe { general_content.addSubview(&sep4) };
 
-        let provider_selector =
-            actions::create_provider_selector(mtm, &general_content, delegate);
+        let provider_selector = actions::create_provider_selector(mtm, &general_content, delegate);
 
         unsafe { general_tab.setView(Some(&general_content)) };
 

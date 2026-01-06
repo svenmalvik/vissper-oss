@@ -409,7 +409,10 @@ impl TranscriptionClient {
                     break;
                 }
             }
-            info!("OpenAI audio forwarder exiting after {} chunks", chunk_count);
+            info!(
+                "OpenAI audio forwarder exiting after {} chunks",
+                chunk_count
+            );
         });
 
         // Main connection loop with reconnection support

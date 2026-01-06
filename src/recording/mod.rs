@@ -66,46 +66,42 @@ pub(crate) fn start_recording(
 
     // Get credentials and create provider config based on selected provider
     let (provider_config, sample_rate) = match provider {
-        AiProvider::Azure => {
-            match keychain::get_azure_credentials() {
-                Ok(creds) => (
-                    TranscriptionProviderConfig::Azure {
-                        endpoint: creds.endpoint_url,
-                        deployment: creds.stt_deployment,
-                        api_key: creds.api_key,
-                    },
-                    AZURE_SAMPLE_RATE,
-                ),
-                Err(e) => {
-                    error!("Cannot start recording without Azure credentials: {}", e);
-                    transcription_window::TranscriptionWindow::show();
-                    transcription_window::TranscriptionWindow::update_live_text(
+        AiProvider::Azure => match keychain::get_azure_credentials() {
+            Ok(creds) => (
+                TranscriptionProviderConfig::Azure {
+                    endpoint: creds.endpoint_url,
+                    deployment: creds.stt_deployment,
+                    api_key: creds.api_key,
+                },
+                AZURE_SAMPLE_RATE,
+            ),
+            Err(e) => {
+                error!("Cannot start recording without Azure credentials: {}", e);
+                transcription_window::TranscriptionWindow::show();
+                transcription_window::TranscriptionWindow::update_live_text(
                         "Azure credentials not configured.\n\nPlease go to Settings and enter your Azure OpenAI credentials.",
                         None,
                     );
-                    return;
-                }
+                return;
             }
-        }
-        AiProvider::OpenAI => {
-            match keychain::get_openai_credentials() {
-                Ok(creds) => (
-                    TranscriptionProviderConfig::OpenAI {
-                        api_key: creds.api_key,
-                    },
-                    OPENAI_SAMPLE_RATE,
-                ),
-                Err(e) => {
-                    error!("Cannot start recording without OpenAI credentials: {}", e);
-                    transcription_window::TranscriptionWindow::show();
-                    transcription_window::TranscriptionWindow::update_live_text(
+        },
+        AiProvider::OpenAI => match keychain::get_openai_credentials() {
+            Ok(creds) => (
+                TranscriptionProviderConfig::OpenAI {
+                    api_key: creds.api_key,
+                },
+                OPENAI_SAMPLE_RATE,
+            ),
+            Err(e) => {
+                error!("Cannot start recording without OpenAI credentials: {}", e);
+                transcription_window::TranscriptionWindow::show();
+                transcription_window::TranscriptionWindow::update_live_text(
                         "OpenAI credentials not configured.\n\nPlease go to Settings and enter your OpenAI API key.",
                         None,
                     );
-                    return;
-                }
+                return;
             }
-        }
+        },
     };
 
     // Start audio capture with provider-specific sample rate

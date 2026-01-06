@@ -47,11 +47,8 @@ pub(crate) fn add_openai_controls(
         NSPoint::new(PADDING, section_y),
         NSSize::new(content_width - PADDING * 2.0, 20.0),
     );
-    let section_label = create_section_label(
-        mtm,
-        section_label_frame,
-        "OpenAI Credentials (Required)",
-    );
+    let section_label =
+        create_section_label(mtm, section_label_frame, "OpenAI Credentials (Required)");
 
     // API Key field (centered, wider since it's the only field)
     let field_width = content_width - PADDING * 2.0;

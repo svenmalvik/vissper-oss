@@ -232,7 +232,8 @@ mod tests {
 
     #[test]
     fn test_transcription_delta_deserialization() {
-        let json = r#"{"type": "conversation.item.input_audio_transcription.delta", "delta": "Hello"}"#;
+        let json =
+            r#"{"type": "conversation.item.input_audio_transcription.delta", "delta": "Hello"}"#;
         let msg: OpenAIServerMessage = serde_json::from_str(json).unwrap();
         match msg {
             OpenAIServerMessage::TranscriptionDelta { delta } => {
